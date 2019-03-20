@@ -737,6 +737,11 @@ event_base_new_with_config(const struct event_config *cfg)
 		event_base_start_iocp_(base, cfg->n_cpus_hint);
 #endif
 
+	/* initialize event watcher lists */
+	for (i = 0; i < EVENT_WATCHER_TYPES; ++i) {
+		TAILQ_INIT(&base->event_watchers[i]);
+	}
+
 	return (base);
 }
 
@@ -839,6 +844,7 @@ event_base_free_(struct event_base *base, int run_finalizers)
 {
 	int i, n_deleted=0;
 	struct event *ev;
+	struct event_watcher *watcher;
 	/* XXXX grab the lock? If there is contention when one thread frees
 	 * the base, then the contending thread will be very sad soon. */
 
@@ -938,6 +944,15 @@ event_base_free_(struct event_base *base, int run_finalizers)
 
 	EVTHREAD_FREE_LOCK(base->th_base_lock, 0);
 	EVTHREAD_FREE_COND(base->current_event_cond);
+
+	/* Free all event watchers */
+	for (i = 0; i < EVENT_WATCHER_TYPES; ++i) {
+		while (!TAILQ_EMPTY(&base->event_watchers[i])) {
+			watcher = TAILQ_FIRST(&base->event_watchers[i]);
+			TAILQ_REMOVE(&base->event_watchers[i], watcher, next);
+			free(watcher);
+		}
+	}
 
 	/* If we're freeing current_base, there won't be a current_base. */
 	if (base == current_base)
@@ -1926,6 +1941,7 @@ event_base_loop(struct event_base *base, int flags)
 	struct timeval tv;
 	struct timeval *tv_p;
 	int res, done, retval = 0;
+	struct event_watcher *watcher;
 
 	/* Grab the lock.  We will release it inside evsel.dispatch, and again
 	 * as we invoke user callbacks. */
@@ -1966,6 +1982,11 @@ event_base_loop(struct event_base *base, int flags)
 			break;
 		}
 
+		/* Invoke prepare watchers before polling for events */
+		TAILQ_FOREACH(watcher, &base->event_watchers[EVENT_WATCHER_PREPARE_TYPE], next) {
+			(*watcher->callback)(base, watcher);
+		}
+
 		tv_p = &tv;
 		if (!N_ACTIVE_CALLBACKS(base) && !(flags & EVLOOP_NONBLOCK)) {
 			timeout_next(base, &tv_p);
@@ -1975,6 +1996,11 @@ event_base_loop(struct event_base *base, int flags)
 			 * without waiting.
 			 */
 			evutil_timerclear(&tv);
+		}
+
+		/* Invoke check watchers after polling for events, and before processing them */
+		TAILQ_FOREACH(watcher, &base->event_watchers[EVENT_WATCHER_CHECK_TYPE], next) {
+			(*watcher->callback)(base, watcher);
 		}
 
 		/* If we have no events, we just exit */

@@ -737,6 +737,7 @@ set(HDR_PUBLIC
     include/event2/event.h
     include/event2/event_compat.h
     include/event2/event_struct.h
+    include/event2/event_watcher.h
     include/event2/http.h
     include/event2/http_compat.h
     include/event2/http_struct.h
@@ -765,6 +766,7 @@ set(SRC_CORE
     evutil.c
     evutil_rand.c
     evutil_time.c
+    evwatcher.c
     listener.c
     log.c
     signal.c
@@ -1119,6 +1121,7 @@ if (NOT EVENT__DISABLE_TESTS)
                   test-eof
                   test-fdleak
                   test-init
+                  test-prepare-check
                   test-time
                   test-weof)
 

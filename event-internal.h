@@ -205,6 +205,26 @@ struct event_once {
 	void *arg;
 };
 
+#define EVENT_WATCHER_PREPARE_TYPE 0
+#define EVENT_WATCHER_CHECK_TYPE   1
+#define EVENT_WATCHER_TYPES        2
+
+/* Handle to a "prepare" or "check" callback, registered in event_base. */
+struct event_watcher {
+	/* Tail queue pointers, called "next" by convention in libevent. See <sys/queue.h> */
+	TAILQ_ENTRY(event_watcher) next;
+
+	/* Pointer to owning event loop */
+	struct event_base *base;
+
+	/* Watcher type (see above) */
+	unsigned type;
+
+	/* Callback function */
+	void (*callback)(struct event_base *, struct event_watcher *);
+};
+TAILQ_HEAD(event_watcher_list, event_watcher);
+
 struct event_base {
 	/** Function pointers and other data to describe this event_base's
 	 * backend. */
@@ -346,6 +366,8 @@ struct event_base {
 	/** List of event_onces that have not yet fired. */
 	LIST_HEAD(once_event_list, event_once) once_events;
 
+	/** Event watchers. */
+	struct event_watcher_list event_watchers[EVENT_WATCHER_TYPES];
 };
 
 struct event_config_entry {
