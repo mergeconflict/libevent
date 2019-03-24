@@ -31,24 +31,33 @@
 static inline struct event_watcher *
 event_watcher_new(struct event_base *base, event_watcher_cb callback, unsigned type)
 {
-	struct event_watcher *watcher = malloc(sizeof(struct event_watcher));
+	struct event_watcher *watcher = mm_malloc(sizeof(struct event_watcher));
+	if (!watcher) {
+		return NULL;
+	}
 	watcher->base = base;
 	watcher->type = type;
 	watcher->callback = callback;
 	TAILQ_INSERT_TAIL(&base->event_watchers[type], watcher, next);
-	return (watcher);
+	return watcher;
 }
 
 struct event_watcher *
 event_watcher_prepare_new(struct event_base *base, event_watcher_cb callback)
 {
-	return (event_watcher_new(base, callback, EVENT_WATCHER_PREPARE_TYPE));
+	return event_watcher_new(base, callback, EVENT_WATCHER_PREPARE_TYPE);
 }
 
 struct event_watcher *
 event_watcher_check_new(struct event_base *base, event_watcher_cb callback)
 {
-	return (event_watcher_new(base, callback, EVENT_WATCHER_CHECK_TYPE));
+	return event_watcher_new(base, callback, EVENT_WATCHER_CHECK_TYPE);
+}
+
+struct event_base *
+event_watcher_base(struct event_watcher *watcher)
+{
+	return watcher->base;
 }
 
 void

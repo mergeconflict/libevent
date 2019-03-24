@@ -29,7 +29,7 @@
 
 /** @file event2/event_watcher.h
 
-  Functions for registering and deregistering event watchers.
+	Functions for registering and deregistering event watchers.
 
  */
 
@@ -37,56 +37,76 @@
 extern "C" {
 #endif
 
+#ifdef EVENT__HAVE_SYS_TIME_H
+#include <sys/time.h>
+#endif
+#include <time.h>
+
 #include <event2/visibility.h>
 
 struct event_base;
 struct event_watcher;
 
 /**
-  TODO(mergeconflict): What parameters would be interesting to pass from the event loop to these
-  callbacks? For comparison, libev passes a pointer to the event loop and the watcher, which might
-  be handy. It also passes "revents" which is a bitfield representing the type of event (e.g. read,
-  write), which seems less useful, since these aren't events at all. In contrast, libuv just passes 
-  a pointer to the watcher.
-
-    https://metacpan.org/pod/distribution/EV/libev/ev.pod#ev_prepare-and-ev_check-customise-your-event-loop!
-    http://docs.libuv.org/en/v1.x/prepare.html, http://docs.libuv.org/en/v1.x/check.html
-
-  Note that we could get away with just passing the watcher, not the base, since event_watcher
-  holds a pointer to its base (see definition in event-internal.h). We'd just need to provide a
-  function like:
-
-    struct event_base *event_watcher_base(struct event_watcher *)
-
-  which is either a convenience or an inconvenience depending how you look at it...
+	Contextual information passed from event_base_loop to the watcher callbacks. We define this as a
+	struct rather than individual parameters to the callback function for the sake of extensibility.
  */
-typedef void (*event_watcher_cb)(struct event_base *, struct event_watcher *);
+struct event_watcher_cb_info {
+	/**
+		The current time (may be cached). This value is scoped to this callback; if you need to retain it
+		outside the scope of the callback (e.g. to measure the duration between callbacks), make a copy.
+	 */
+	struct timeval now;
+
+	/**
+		The timeout duration passed to the underlying implementation's `dispatch`. This will be NULL if
+		there are no pending EV_TIMEOUT events. It may be a useful performance statistic to compare this
+		value -- essentially the expected polling duration -- against the actual polling duration
+		measured by comparing the "now" times reported in prepare and check.
+	 */
+	const struct timeval *timeout;
+};
 
 /**
-  Register a new "prepare" watcher, to be called in the event loop prior to polling for events.
-  Watchers will be called in the order they were registered.
-  @param base the event_base to operate on.
-  @param callback the callback function to invoke.
-  @return a pointer to the newly allocated event watcher.
+	Watcher callback, invoked by event_base_loop.
+	@param watcher the event watcher that invoked this callback.
+	@param info contextual information passed from event_base_loop.
+ */
+typedef void (*event_watcher_cb)(struct event_watcher *, const struct event_watcher_cb_info *);
+
+/**
+	Register a new "prepare" watcher, to be called in the event loop prior to polling for events.
+	Watchers will be called in the order they were registered.
+	@param base the event_base to operate on.
+	@param callback the callback function to invoke.
+	@return a pointer to the newly allocated event watcher.
  */
 EVENT2_EXPORT_SYMBOL
 struct event_watcher *event_watcher_prepare_new(struct event_base *base, event_watcher_cb callback);
 
 /**
-  Register a new "check" watcher, to be called in the event loop after polling for events and before
-  handling them. Watchers will be called in the order they were registered.
-  @param base the event_base to operate on.
-  @param callback the callback function to invoke.
-  @return a pointer to the newly allocated event watcher.
+	Register a new "check" watcher, to be called in the event loop after polling for events and before
+	handling them. Watchers will be called in the order they were registered.
+	@param base the event_base to operate on.
+	@param callback the callback function to invoke.
+	@return a pointer to the newly allocated event watcher.
  */
 EVENT2_EXPORT_SYMBOL
 struct event_watcher *event_watcher_check_new(struct event_base *base, event_watcher_cb callback);
 
 /**
-  Deregister and deallocate a watcher. Any watchers not freed using event_watcher_free will
-  eventually be deallocated in event_base_free (calling event_watcher_free on a watcher after
-  event_base_free has been called on its corresponding event_base is an error).
-  @param watcher the watcher to deregister and deallocate.
+	Get the event_base that a given event_watcher is registered with.
+	@param watcher the watcher to get the event_base for.
+	@return the event_base for the given watcher.
+ */
+EVENT2_EXPORT_SYMBOL
+struct event_base *event_watcher_base(struct event_watcher *watcher);
+
+/**
+	Deregister and deallocate a watcher. Any watchers not freed using event_watcher_free will
+	eventually be deallocated in event_base_free (calling event_watcher_free on a watcher after
+	event_base_free has been called on its corresponding event_base is an error).
+	@param watcher the watcher to deregister and deallocate.
  */
 EVENT2_EXPORT_SYMBOL
 void event_watcher_free(struct event_watcher *watcher);

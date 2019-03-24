@@ -28,135 +28,97 @@
 #include <event2/event_watcher.h>
 #include <assert.h>
 
-static struct event_watcher *prepare_callback_1_watcher;
-static struct event_watcher *prepare_callback_2_watcher;
-static struct event_watcher *check_callback_1_watcher;
-static struct event_watcher *check_callback_2_watcher;
-
+static int iteration = 0;
 static int prepare_callback_1_count = 0;
 static int prepare_callback_2_count = 0;
 static int check_callback_1_count = 0;
 static int check_callback_2_count = 0;
-static int timeout_callback_count = 0;
 
-static struct event_base *base;
+#define log_callback \
+	printf("%s:\n", __func__); \
+	printf("  now: %ld.%06ld\n", info->now.tv_sec, info->now.tv_usec); \
+	if (info->timeout) { \
+		printf("  timeout: %ld.%06ld\n", info->timeout->tv_sec, info->timeout->tv_usec); \
+	} else { \
+		printf("  timeout: NULL\n"); \
+	}
 
 void
-prepare_callback_1(struct event_base *base, struct event_watcher *watcher)
+prepare_callback_1(struct event_watcher *watcher, const struct event_watcher_cb_info *info)
 {
-  printf("prepare_callback_1\n");
-  switch (prepare_callback_1_count) {
-  case 0:
-    /* first iteration: no callbacks should have fired */
-    assert(prepare_callback_2_count == 0);
-    assert(check_callback_1_count == 0);
-    assert(check_callback_2_count == 0);
-    assert(timeout_callback_count == 0);
-    break;
-  case 1:
-    /* second iteration: all callbacks should have fired once */
-    assert(prepare_callback_2_count == 1);
-    assert(check_callback_1_count == 1);
-    assert(check_callback_2_count == 1);
-    assert(timeout_callback_count == 1);
-    break;
-  default:
-    /* there should be no third iteration */
-    assert(0);
-  }
-  ++prepare_callback_1_count;
+	log_callback;
+	++prepare_callback_1_count;
+
+	/* prepare_callback_1 should always fire before prepare_callback_2, and before both check callbacks */
+	assert(prepare_callback_1_count > prepare_callback_2_count);
+	assert(prepare_callback_1_count > check_callback_1_count);
+	assert(prepare_callback_1_count > check_callback_2_count);
 }
 
 void
-prepare_callback_2(struct event_base *base, struct event_watcher *watcher)
+prepare_callback_2(struct event_watcher *watcher, const struct event_watcher_cb_info *info)
 {
-  printf("prepare_callback_2\n");
-  /* only the first prepare callback should have fired previously, and there should be no second iteration */
-  assert(prepare_callback_1_count == 1);
-  assert(prepare_callback_2_count == 0);
-  assert(check_callback_1_count == 0);
-  assert(check_callback_2_count == 0);
-  assert(timeout_callback_count == 0);
-  ++prepare_callback_2_count;
+	log_callback;
+	++prepare_callback_2_count;
+
+	/* prepare_callback_2 should only fire on the first iteration, and should fire before both check callbacks */
+	assert(iteration == 0);
+	assert(prepare_callback_2_count > check_callback_1_count);
+	assert(prepare_callback_2_count > check_callback_2_count);
 }
 
 void
-check_callback_1(struct event_base *base, struct event_watcher *watcher)
+check_callback_1(struct event_watcher *watcher, const struct event_watcher_cb_info *info)
 {
-  printf("check_callback_1\n");
-  switch (check_callback_1_count) {
-  case 0:
-    /* first iteration: prepare callbacks should fire before check callbacks */
-    assert(prepare_callback_1_count == 1);
-    assert(prepare_callback_2_count == 1);
-    assert(check_callback_2_count == 0);
-    assert(timeout_callback_count == 0);
-    break;
-  case 1:
-    /* second iteration: first prepare callback should have fired twice */
-    assert(prepare_callback_1_count == 2);
-    assert(prepare_callback_2_count == 1);
-    assert(check_callback_2_count == 1);
-    assert(timeout_callback_count == 1);
-    break;
-  default:
-    /* there should be no third iteration */
-    assert(0);
-  }
-  ++check_callback_1_count;
+	log_callback;
+	++check_callback_1_count;
+
+	/* check_callback_1 should always fire before check_callback_2 */
+	assert(check_callback_1_count > check_callback_2_count);
 }
 
 void
-check_callback_2(struct event_base *base, struct event_watcher *watcher)
+check_callback_2(struct event_watcher *watcher, const struct event_watcher_cb_info *info)
 {
-  printf("check_callback_2\n");
-  /* first check callback should fire before second check callback, and there should be no second iteration */
-  assert(prepare_callback_1_count == 1);
-  assert(prepare_callback_2_count == 1);
-  assert(check_callback_1_count == 1);
-  assert(check_callback_2_count == 0);
-  assert(timeout_callback_count == 0);
-  ++check_callback_2_count;
+	log_callback;
+	++check_callback_2_count;
+
+	/* check_callback_2 should only fire on the first iteration */
+	assert(iteration == 0);
 }
 
 void
 timeout_callback(evutil_socket_t fd, short events, void *arg)
 {
-  printf("timeout_callback\n");
-  /* the prepare and check callbacks should fire before the timeout event, which should only fire once */
-  assert(prepare_callback_1_count == 1);
-  assert(prepare_callback_2_count == 1);
-  assert(check_callback_1_count == 1);
-  assert(check_callback_2_count == 1);
-  assert(timeout_callback_count == 0);
-
-  /* free the second prepare and check watchers to verify they aren't invoked a second time */
-  event_watcher_free(prepare_callback_2_watcher);
-  event_watcher_free(check_callback_2_watcher);
-  ++timeout_callback_count;
+	printf("timeout_callback\n");
 }
 
 int
 main(int argc, char **argv)
 {
-	base = event_base_new();
+	struct event_base *base = event_base_new();
 
-  /* install prepare and check watchers, and schedule an immediate timeout event */
-  prepare_callback_1_watcher = event_watcher_prepare_new(base, &prepare_callback_1);
-  prepare_callback_2_watcher = event_watcher_prepare_new(base, &prepare_callback_2);
-  check_callback_1_watcher = event_watcher_prepare_new(base, &check_callback_1);
-  check_callback_2_watcher = event_watcher_prepare_new(base, &check_callback_2);
-  event_base_once(base, -1, EV_TIMEOUT, &timeout_callback, 0, 0);
+	/* install prepare and check watchers */
+	event_watcher_prepare_new(base, &prepare_callback_1);
+	event_watcher_check_new(base, &check_callback_1);
+	struct event_watcher *prepare_callback_2_watcher = event_watcher_prepare_new(base, &prepare_callback_2);
+	struct event_watcher *check_callback_2_watcher = event_watcher_check_new(base, &check_callback_2);
 
-  /* dispatch and verify that callbacks fire in the correct order */
-  event_base_dispatch(base);
-  assert(prepare_callback_1_count == 2);
-  assert(prepare_callback_2_count == 1);
-  assert(check_callback_1_count == 2);
-  assert(check_callback_2_count == 1);
-  assert(timeout_callback_count == 1);
+	/* schedule an 1 second timeout event, and run the event loop until the timeout fires */
+	struct timeval tv;
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+	event_base_once(base, -1, EV_TIMEOUT, &timeout_callback, 0, &tv);
+	event_base_dispatch(base);
 
-  /* this will free the watchers that weren't already freed in timeout_callback */
-  event_base_free(base);
+	/* second iteration: free two of the watchers, schedule a timeout and run the event loop again */
+	iteration = 1;
+	event_watcher_free(prepare_callback_2_watcher);
+	event_watcher_free(check_callback_2_watcher);
+	event_base_once(base, -1, EV_TIMEOUT, &timeout_callback, 0, &tv);
+	event_base_dispatch(base);
+
+	/* this will free the watchers that weren't already freed in timeout_callback */
+	event_base_free(base);
 	return (0);
 }

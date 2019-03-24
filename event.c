@@ -59,6 +59,7 @@
 #include "event2/event.h"
 #include "event2/event_struct.h"
 #include "event2/event_compat.h"
+#include "event2/event_watcher.h"
 #include "event-internal.h"
 #include "defer-internal.h"
 #include "evthread-internal.h"
@@ -1941,6 +1942,7 @@ event_base_loop(struct event_base *base, int flags)
 	struct timeval tv;
 	struct timeval *tv_p;
 	int res, done, retval = 0;
+	struct event_watcher_cb_info watcher_cb_info;
 	struct event_watcher *watcher;
 
 	/* Grab the lock.  We will release it inside evsel.dispatch, and again
@@ -1982,11 +1984,6 @@ event_base_loop(struct event_base *base, int flags)
 			break;
 		}
 
-		/* Invoke prepare watchers before polling for events */
-		TAILQ_FOREACH(watcher, &base->event_watchers[EVENT_WATCHER_PREPARE_TYPE], next) {
-			(*watcher->callback)(base, watcher);
-		}
-
 		tv_p = &tv;
 		if (!N_ACTIVE_CALLBACKS(base) && !(flags & EVLOOP_NONBLOCK)) {
 			timeout_next(base, &tv_p);
@@ -1998,11 +1995,6 @@ event_base_loop(struct event_base *base, int flags)
 			evutil_timerclear(&tv);
 		}
 
-		/* Invoke check watchers after polling for events, and before processing them */
-		TAILQ_FOREACH(watcher, &base->event_watchers[EVENT_WATCHER_CHECK_TYPE], next) {
-			(*watcher->callback)(base, watcher);
-		}
-
 		/* If we have no events, we just exit */
 		if (0==(flags&EVLOOP_NO_EXIT_ON_EMPTY) &&
 		    !event_haveevents(base) && !N_ACTIVE_CALLBACKS(base)) {
@@ -2012,6 +2004,13 @@ event_base_loop(struct event_base *base, int flags)
 		}
 
 		event_queue_make_later_events_active(base);
+
+		/* Invoke prepare watchers before polling for events */
+		gettime(base, &watcher_cb_info.now);
+		watcher_cb_info.timeout = tv_p;
+		TAILQ_FOREACH(watcher, &base->event_watchers[EVENT_WATCHER_PREPARE_TYPE], next) {
+			(*watcher->callback)(watcher, &watcher_cb_info);
+		}
 
 		clear_time_cache(base);
 
@@ -2025,6 +2024,12 @@ event_base_loop(struct event_base *base, int flags)
 		}
 
 		update_time_cache(base);
+
+		/* Invoke check watchers after polling for events, and before processing them */
+		gettime(base, &watcher_cb_info.now);
+		TAILQ_FOREACH(watcher, &base->event_watchers[EVENT_WATCHER_CHECK_TYPE], next) {
+			(*watcher->callback)(watcher, &watcher_cb_info);
+		}
 
 		timeout_process(base);
 

@@ -210,6 +210,7 @@ struct event_once {
 #define EVENT_WATCHER_TYPES        2
 
 /* Handle to a "prepare" or "check" callback, registered in event_base. */
+struct event_watcher_cb_info;
 struct event_watcher {
 	/* Tail queue pointers, called "next" by convention in libevent. See <sys/queue.h> */
 	TAILQ_ENTRY(event_watcher) next;
@@ -221,7 +222,7 @@ struct event_watcher {
 	unsigned type;
 
 	/* Callback function */
-	void (*callback)(struct event_base *, struct event_watcher *);
+	void (*callback)(struct event_watcher *, const struct event_watcher_cb_info *);
 };
 TAILQ_HEAD(event_watcher_list, event_watcher);
 
