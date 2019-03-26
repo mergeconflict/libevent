@@ -28,6 +28,18 @@
 #include <event2/event_watcher.h>
 #include <assert.h>
 
+/*
+
+	This tests a few important properties of "prepare" and "check" watchers:
+	  - Watchers should be called in the order they were registered.
+	  - Prepare watchers should be called before check watchers.
+	  - Freeing a watcher will stop callbacks to it, but not to other watchers.
+	  - Reported durations should align with the registered timeouts.
+	  - If this test is compiled with ASAN or similar, this test also illustrates that
+	    event_base_free will free any watchers not previously freed by event_watcher_free.
+
+ */
+
 static int iteration = 0;
 static int prepare_callback_1_count = 0;
 static int prepare_callback_2_count = 0;
@@ -36,15 +48,18 @@ static int check_callback_2_count = 0;
 static struct timeval start_time = { 0, 0 };
 static struct timeval end_time = { 0, 0 };
 
-#define log_callback \
+#define log_check_callback \
 	printf("%s:\n", __func__); \
-	printf("  now: %ld.%06ld\n", info->now.tv_sec, info->now.tv_usec); \
+	printf("  now: %ld.%06ld\n", info->now.tv_sec, info->now.tv_usec);
+
+#define log_prepare_callback \
+	log_check_callback \
 	printf("  timeout: %ld.%06ld\n", info->timeout->tv_sec, info->timeout->tv_usec);
 
 void
-prepare_callback_1(struct event_watcher *watcher, const struct event_watcher_cb_info *info)
+prepare_callback_1(struct event_watcher *watcher, const struct prepare_watcher_cb_info *info)
 {
-	log_callback;
+	log_prepare_callback;
 	++prepare_callback_1_count;
 
 	/* prepare_callback_1 should always fire before prepare_callback_2, and before both check callbacks */
@@ -61,9 +76,9 @@ prepare_callback_1(struct event_watcher *watcher, const struct event_watcher_cb_
 }
 
 void
-prepare_callback_2(struct event_watcher *watcher, const struct event_watcher_cb_info *info)
+prepare_callback_2(struct event_watcher *watcher, const struct prepare_watcher_cb_info *info)
 {
-	log_callback;
+	log_prepare_callback;
 	++prepare_callback_2_count;
 
 	/* prepare_callback_2 should only fire on the first iteration, and should fire before both check callbacks */
@@ -73,9 +88,9 @@ prepare_callback_2(struct event_watcher *watcher, const struct event_watcher_cb_
 }
 
 void
-check_callback_1(struct event_watcher *watcher, const struct event_watcher_cb_info *info)
+check_callback_1(struct event_watcher *watcher, const struct check_watcher_cb_info *info)
 {
-	log_callback;
+	log_check_callback;
 	++check_callback_1_count;
 
 	/* check_callback_1 should always fire before check_callback_2 */
@@ -86,9 +101,9 @@ check_callback_1(struct event_watcher *watcher, const struct event_watcher_cb_in
 }
 
 void
-check_callback_2(struct event_watcher *watcher, const struct event_watcher_cb_info *info)
+check_callback_2(struct event_watcher *watcher, const struct check_watcher_cb_info *info)
 {
-	log_callback;
+	log_check_callback;
 	++check_callback_2_count;
 
 	/* check_callback_2 should only fire on the first iteration */

@@ -29,7 +29,11 @@
 
 /** @file event2/event_watcher.h
 
-	Functions for registering and deregistering event watchers.
+	"Prepare" and "check" watchers. A "prepare" watcher is a callback that fires immediately before
+	polling for I/O. A "check" watcher is a callback that fires immediately after polling and before
+	processing any active events. This may be useful for embedding other libraries' event loops (e.g.
+	UI toolkits) into libevent's. The timing information exposed by the callbacks is especially handy
+	for server health and performance monitoring.
 
  */
 
@@ -48,13 +52,15 @@ struct event_base;
 struct event_watcher;
 
 /**
-	Contextual information passed from event_base_loop to the watcher callbacks. We define this as a
-	struct rather than individual parameters to the callback function for the sake of extensibility.
+	Contextual information passed from event_base_loop to the "prepare" watcher callbacks. We define
+	this as a struct rather than individual parameters to the callback function for the sake of future
+	extensibility.
  */
-struct event_watcher_cb_info {
+struct prepare_watcher_cb_info {
 	/**
-		The current time (may be cached). This value is scoped to this callback; if you need to retain it
-		outside the scope of the callback (e.g. to measure the duration between callbacks), make a copy.
+		The current time (may be cached). This value is scoped to this "prepare" callback; if you need
+		to retain it outside the scope of the callback (e.g. to measure the duration between callbacks),
+		make a copy.
 	 */
 	struct timeval now;
 
@@ -68,11 +74,33 @@ struct event_watcher_cb_info {
 };
 
 /**
-	Watcher callback, invoked by event_base_loop.
-	@param watcher the event watcher that invoked this callback.
+	Contextual information passed from event_base_loop to the "check" watcher callbacks. We define
+	this as a struct rather than individual parameters to the callback function for the sake of future
+	extensibility.
+ */
+struct check_watcher_cb_info {
+	/**
+		The current time (may be cached). This value is scoped to this "check" callback; if you need to
+		retain it outside the scope of the callback (e.g. to measure the duration between callbacks),
+		make a copy.
+	 */
+	struct timeval now;
+};
+
+/**
+	Prepare callback, invoked by event_base_loop immediately before polling for I/O.
+	@param watcher the prepare watcher that invoked this callback.
 	@param info contextual information passed from event_base_loop.
  */
-typedef void (*event_watcher_cb)(struct event_watcher *, const struct event_watcher_cb_info *);
+typedef void (*prepare_watcher_cb)(struct event_watcher *, const struct prepare_watcher_cb_info *);
+
+/**
+	Check callback, invoked by event_base_loop immediately after polling for I/O and before processing
+	any active events.
+	@param watcher the check watcher that invoked this callback.
+	@param info contextual information passed from event_base_loop.
+ */
+typedef void (*check_watcher_cb)(struct event_watcher *, const struct check_watcher_cb_info *);
 
 /**
 	Register a new "prepare" watcher, to be called in the event loop prior to polling for events.
@@ -82,7 +110,7 @@ typedef void (*event_watcher_cb)(struct event_watcher *, const struct event_watc
 	@return a pointer to the newly allocated event watcher.
  */
 EVENT2_EXPORT_SYMBOL
-struct event_watcher *event_watcher_prepare_new(struct event_base *base, event_watcher_cb callback);
+struct event_watcher *event_watcher_prepare_new(struct event_base *base, prepare_watcher_cb callback);
 
 /**
 	Register a new "check" watcher, to be called in the event loop after polling for events and before
@@ -92,7 +120,7 @@ struct event_watcher *event_watcher_prepare_new(struct event_base *base, event_w
 	@return a pointer to the newly allocated event watcher.
  */
 EVENT2_EXPORT_SYMBOL
-struct event_watcher *event_watcher_check_new(struct event_base *base, event_watcher_cb callback);
+struct event_watcher *event_watcher_check_new(struct event_base *base, check_watcher_cb callback);
 
 /**
 	Get the event_base that a given event_watcher is registered with.

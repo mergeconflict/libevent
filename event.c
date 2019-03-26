@@ -1942,7 +1942,8 @@ event_base_loop(struct event_base *base, int flags)
 	struct timeval tv;
 	struct timeval *tv_p;
 	int res, done, retval = 0;
-	struct event_watcher_cb_info watcher_cb_info;
+	struct prepare_watcher_cb_info prepare_info;
+	struct check_watcher_cb_info check_info;
 	struct event_watcher *watcher;
 
 	/* Grab the lock.  We will release it inside evsel.dispatch, and again
@@ -2006,10 +2007,10 @@ event_base_loop(struct event_base *base, int flags)
 		event_queue_make_later_events_active(base);
 
 		/* Invoke prepare watchers before polling for events */
-		gettime(base, &watcher_cb_info.now);
-		watcher_cb_info.timeout = tv_p;
+		gettime(base, &prepare_info.now);
+		prepare_info.timeout = tv_p;
 		TAILQ_FOREACH(watcher, &base->event_watchers[EVENT_WATCHER_PREPARE_TYPE], next) {
-			(*watcher->callback)(watcher, &watcher_cb_info);
+			(*watcher->callback.prepare)(watcher, &prepare_info);
 		}
 
 		clear_time_cache(base);
@@ -2026,9 +2027,9 @@ event_base_loop(struct event_base *base, int flags)
 		update_time_cache(base);
 
 		/* Invoke check watchers after polling for events, and before processing them */
-		gettime(base, &watcher_cb_info.now);
+		gettime(base, &check_info.now);
 		TAILQ_FOREACH(watcher, &base->event_watchers[EVENT_WATCHER_CHECK_TYPE], next) {
-			(*watcher->callback)(watcher, &watcher_cb_info);
+			(*watcher->callback.check)(watcher, &check_info);
 		}
 
 		timeout_process(base);

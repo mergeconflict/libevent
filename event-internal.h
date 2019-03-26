@@ -32,6 +32,7 @@ extern "C" {
 #endif
 
 #include "event2/event-config.h"
+#include "event2/event_watcher.h"
 #include "evconfig-private.h"
 
 #include <time.h>
@@ -210,7 +211,11 @@ struct event_once {
 #define EVENT_WATCHER_TYPES        2
 
 /* Handle to a "prepare" or "check" callback, registered in event_base. */
-struct event_watcher_cb_info;
+union event_watcher_cb {
+	prepare_watcher_cb prepare;
+	check_watcher_cb check;
+};
+
 struct event_watcher {
 	/* Tail queue pointers, called "next" by convention in libevent. See <sys/queue.h> */
 	TAILQ_ENTRY(event_watcher) next;
@@ -222,7 +227,7 @@ struct event_watcher {
 	unsigned type;
 
 	/* Callback function */
-	void (*callback)(struct event_watcher *, const struct event_watcher_cb_info *);
+	union event_watcher_cb callback;
 };
 TAILQ_HEAD(event_watcher_list, event_watcher);
 
@@ -367,7 +372,7 @@ struct event_base {
 	/** List of event_onces that have not yet fired. */
 	LIST_HEAD(once_event_list, event_once) once_events;
 
-	/** Event watchers. */
+	/** "Prepare" and "check" watchers. */
 	struct event_watcher_list event_watchers[EVENT_WATCHER_TYPES];
 };
 

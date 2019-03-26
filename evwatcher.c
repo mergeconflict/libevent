@@ -29,7 +29,7 @@
 #include "event-internal.h"
 
 static inline struct event_watcher *
-event_watcher_new(struct event_base *base, event_watcher_cb callback, unsigned type)
+event_watcher_new(struct event_base *base, union event_watcher_cb callback, unsigned type)
 {
 	struct event_watcher *watcher = mm_malloc(sizeof(struct event_watcher));
 	if (!watcher) {
@@ -43,15 +43,17 @@ event_watcher_new(struct event_base *base, event_watcher_cb callback, unsigned t
 }
 
 struct event_watcher *
-event_watcher_prepare_new(struct event_base *base, event_watcher_cb callback)
+event_watcher_prepare_new(struct event_base *base, prepare_watcher_cb callback)
 {
-	return event_watcher_new(base, callback, EVENT_WATCHER_PREPARE_TYPE);
+	union event_watcher_cb cb = { .prepare = callback };
+	return event_watcher_new(base, cb, EVENT_WATCHER_PREPARE_TYPE);
 }
 
 struct event_watcher *
-event_watcher_check_new(struct event_base *base, event_watcher_cb callback)
+event_watcher_check_new(struct event_base *base, check_watcher_cb callback)
 {
-	return event_watcher_new(base, callback, EVENT_WATCHER_CHECK_TYPE);
+	union event_watcher_cb cb = { .check = callback };
+	return event_watcher_new(base, cb, EVENT_WATCHER_CHECK_TYPE);
 }
 
 struct event_base *
